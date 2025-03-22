@@ -129,8 +129,12 @@ export default class SquareMaskMaterialPlugin extends BABYLON.MaterialPluginBase
               // Calculate distance in XZ plane
               vec2 distanceXZ = vPosition.xz - playerPosition.xz;
 
+              // Calculate euclidean distance in XZ plane
+              float distance = length(distanceXZ);
+
               // Check if the fragment is within the square mask
-              if (abs(distanceXZ.x) <= squareSize && abs(distanceXZ.y) <= squareSize) {
+              // if (abs(distanceXZ.x) <= squareSize && abs(distanceXZ.y) <= squareSize) {
+              if (distance <= squareSize) {
                   
                   // Inside mask: don't change the color
               } else {

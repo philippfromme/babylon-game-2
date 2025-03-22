@@ -1,83 +1,12 @@
 import * as BABYLON from "@babylonjs/core";
+import "@babylonjs/inspector";
 
-import SquareMaskMaterialPlugin from "./SquareMaskMaterialPlugin";
-import { createSquareMaskShaderMaterial } from "./SquareMaskShaderMaterial";
+import { createCheckerboardTexture } from "./material/createCheckerboardTexture";
 
 import "./main.css";
 
-const boxesSquareWidthAndHeight = 50;
-const squareMaskSquareSize = 5;
-const cameraOffset = new BABYLON.Vector3(0, 15, -10);
-
-BABYLON.Effect.ShadersStore["CheckerboardPixelShader"] = `
-    precision highp float;
-    varying vec2 vUV;
-    uniform vec3 color1;
-    uniform vec3 color2;
-    uniform float size;
-
-    void main(void) {
-        float x = floor(vUV.x * size);
-        float y = floor(vUV.y * size);
-        bool isEven = mod(x + y, 2.0) == 0.0;
-        gl_FragColor = vec4(isEven ? color1 : color2, 1.0);
-    }
-`;
-
-BABYLON.RegisterClass(
-  "BABYLON.SquareMaskMaterialPlugin",
-  SquareMaskMaterialPlugin
-);
-
-BABYLON.RegisterMaterialPlugin("SquareMaskMaterialPlugin", (material) => {
-  let plugin: SquareMaskMaterialPlugin | null = null;
-
-  if (material instanceof BABYLON.StandardMaterial) {
-    plugin = new SquareMaskMaterialPlugin(material);
-
-    plugin._isEnabled = true;
-
-    plugin.setPlayerPosition(new BABYLON.Vector3(0, 0, 0));
-    plugin.setSquareSize(squareMaskSquareSize);
-  }
-
-  return plugin;
-});
-
-type CheckerboardTextureOptions = {
-  size?: number;
-  color1?: BABYLON.Color3;
-  color2?: BABYLON.Color3;
-  squares?: number;
-};
-
-function createCheckerboardTexture(
-  scene: BABYLON.Scene,
-  options: CheckerboardTextureOptions = {}
-) {
-  const _options: Required<CheckerboardTextureOptions> = {
-    size: 512,
-    color1: new BABYLON.Color3(1, 1, 1),
-    color2: new BABYLON.Color3(0, 0, 0),
-    squares: 8,
-    ...options,
-  };
-
-  const checkerboardTexture = new BABYLON.CustomProceduralTexture(
-    "checkerboard",
-    "Checkerboard",
-    _options.size,
-    scene
-  );
-
-  checkerboardTexture.setColor3("color1", _options.color1); // White
-  checkerboardTexture.setColor3("color2", _options.color2); // Black
-  checkerboardTexture.setFloat("size", _options.squares); // Number of squares per row/column
-
-  return checkerboardTexture;
-}
-
 const canvas = document.createElement("canvas");
+
 document.body.appendChild(canvas);
 
 const engine = new BABYLON.Engine(canvas, true);
@@ -94,9 +23,24 @@ const camera = new BABYLON.ArcRotateCamera(
   scene
 );
 
-camera.setPosition(cameraOffset);
+camera.setPosition(new BABYLON.Vector3(20, 20, 20));
 camera.setTarget(BABYLON.Vector3.Zero());
 camera.attachControl(canvas, true);
+
+const secondaryCamera = new BABYLON.FreeCamera(
+  "secondaryCamera",
+  new BABYLON.Vector3(-20, 5, 0),
+  scene
+);
+
+// disable controls for the secondary camera
+secondaryCamera.inputs.clear();
+
+secondaryCamera.setTarget(new BABYLON.Vector3(0, 0, 0));
+
+secondaryCamera.fov = 0.5;
+secondaryCamera.minZ = 1;
+secondaryCamera.maxZ = 25;
 
 const light = new BABYLON.DirectionalLight(
   "light",
@@ -105,20 +49,12 @@ const light = new BABYLON.DirectionalLight(
 );
 
 // Standard material
-const standardMaterialWithSquareMask = new BABYLON.StandardMaterial(
-  "material",
-  scene
-);
+const standartMaterial = new BABYLON.StandardMaterial("material", scene);
 
-standardMaterialWithSquareMask.diffuseTexture = createCheckerboardTexture(
-  scene,
-  {
-    squares: 256,
-  }
-);
-
-// Shader material
-const squareMaskShaderMaterial = createSquareMaskShaderMaterial(scene);
+standartMaterial.diffuseTexture = createCheckerboardTexture(scene, {
+  canvasWidth: 2048,
+  squares: 256,
+});
 
 const ground = BABYLON.MeshBuilder.CreateGround(
   "ground",
@@ -126,9 +62,18 @@ const ground = BABYLON.MeshBuilder.CreateGround(
   scene
 );
 
-ground.material = standardMaterialWithSquareMask.clone(
-  "groundMaterialWithSquareMask"
+ground.material = standartMaterial.clone("groundMaterial");
+
+const ground2 = BABYLON.MeshBuilder.CreateGround(
+  "ground2",
+  { width: 50, height: 50 },
+  scene
 );
+
+ground2.position.y = 1;
+ground2.position.x = 25;
+ground2.position.z = 25;
+ground2.material = standartMaterial.clone("ground2Material");
 
 const capsule = BABYLON.MeshBuilder.CreateCapsule(
   "capsule",
@@ -136,31 +81,28 @@ const capsule = BABYLON.MeshBuilder.CreateCapsule(
   scene
 );
 
-capsule.position.y = 1;
+capsule.position = new BABYLON.Vector3(0, 1, 0);
 
-const capsuleMaterial = standardMaterialWithSquareMask.clone(
-  "capsuleMaterialWithSquareMask"
-);
+const capsuleMaterial = standartMaterial.clone("capsuleMaterial");
 
 capsuleMaterial.diffuseTexture = createCheckerboardTexture(scene, {
-  squares: 4,
-  color1: new BABYLON.Color3(1, 1, 1),
-  color2: new BABYLON.Color3(0, 0, 1),
+  canvasWidth: 256,
+  squares: 16,
 });
 
 capsule.material = capsuleMaterial;
 
-// create some boxes around the scene
 const positions: BABYLON.Vector3[] = [];
+
+const boxes: BABYLON.Mesh[] = [];
 
 const maxTries = 100;
 
-const boxMaterial = standardMaterialWithSquareMask.clone("boxMaterial");
+const boxMaterial = standartMaterial.clone("boxMaterial");
 
 boxMaterial.diffuseTexture = createCheckerboardTexture(scene, {
-  squares: 4,
-  color1: new BABYLON.Color3(1, 1, 1),
-  color2: new BABYLON.Color3(1, 0, 0),
+  canvasWidth: 256,
+  squares: 10,
 });
 
 for (let i = 0; i < 50; i++) {
@@ -176,9 +118,9 @@ for (let i = 0; i < 50; i++) {
 
   do {
     position = new BABYLON.Vector3(
-      Math.random() * boxesSquareWidthAndHeight - boxesSquareWidthAndHeight / 2,
+      Math.random() * 50 - 50 / 2,
       box.position.y,
-      Math.random() * boxesSquareWidthAndHeight - boxesSquareWidthAndHeight / 2
+      Math.random() * 50 - 50 / 2
     );
 
     if (tries++ === maxTries) {
@@ -191,6 +133,8 @@ for (let i = 0; i < 50; i++) {
   positions.push(position);
 
   box.material = boxMaterial;
+
+  boxes.push(box);
 }
 
 type InputMap = {
@@ -243,79 +187,127 @@ scene.onBeforeRenderObservable.add(() => {
   capsule.moveWithCollisions(moveDirection.scale(speed));
 });
 
-scene.registerBeforeRender(() => {
-  const playerPosition = capsule.position;
+const depthRenderer = scene.enableDepthRenderer(secondaryCamera);
+const depthMap = depthRenderer.getDepthMap();
 
-  camera.target = playerPosition;
-  camera.position = playerPosition.add(cameraOffset);
-
-  squareMaskShaderMaterial.setVector3("playerPosition", playerPosition);
-
-  (
-    (ground.material as BABYLON.StandardMaterial)?.pluginManager?.getPlugin(
-      "SquareMaskMaterialPlugin"
-    ) as SquareMaskMaterialPlugin
-  )?.setPlayerPosition(playerPosition);
-
-  (
-    capsuleMaterial.pluginManager?.getPlugin(
-      "SquareMaskMaterialPlugin"
-    ) as SquareMaskMaterialPlugin
-  ).setPlayerPosition(playerPosition);
-
-  (
-    boxMaterial.pluginManager?.getPlugin(
-      "SquareMaskMaterialPlugin"
-    ) as SquareMaskMaterialPlugin
-  ).setPlayerPosition(playerPosition);
-});
-
-BABYLON.Effect.ShadersStore["customFragmentShader"] = `
-    #ifdef GL_ES
-        precision highp float;
-    #endif
-
-    // Samplers
-    varying vec2 vUV;
-    uniform sampler2D textureSampler;
-
-    // Parameters
-    uniform float levels;
-    uniform vec2 screenSize;
-    uniform float threshold;
-
-    void main(void)
-    {
-        vec4 baseColor = texture2D(textureSampler, vUV);
-
-        // posterization
-        baseColor = vec4(floor(baseColor.rgb * levels) / levels, 1.0);
-
-        // threshold
-        float gray = dot(baseColor.rgb, vec3(0.299, 0.587, 0.114));
-
-        if (gray > threshold) {
-            gl_FragColor = baseColor;
-        } else {
-            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        }
-    }
-    `;
-
-var postProcess = new BABYLON.PostProcess(
-  "ThresholdPostProcess",
-  "custom",
-  ["levels", "screenSize", "threshold"],
-  null,
-  0.25,
-  camera
+const visibilityShaderMaterial = new BABYLON.ShaderMaterial(
+  "visibilityShader",
+  scene,
+  {
+    vertex: "custom",
+    fragment: "custom",
+  },
+  {
+    attributes: ["position", "uv"],
+    uniforms: [
+      "depthTexture",
+      "secondaryViewProjection",
+      "world",
+      "worldViewProjection",
+    ],
+  }
 );
 
-postProcess.onApply = function (effect) {
-  effect.setFloat("levels", 8);
-  effect.setFloat2("screenSize", postProcess.width, postProcess.height);
-  effect.setFloat("threshold", 0);
-};
+visibilityShaderMaterial.setTexture("depthTexture", depthMap);
+visibilityShaderMaterial.setMatrix(
+  "secondaryViewProjection",
+  secondaryCamera
+    .getViewMatrix()
+    .multiply(secondaryCamera.getProjectionMatrix())
+);
+
+BABYLON.Effect.ShadersStore.customVertexShader = `
+precision highp float;
+
+attribute vec3 position;
+
+uniform mat4 world;
+uniform mat4 worldViewProjection;
+uniform mat4 secondaryViewProjection;
+
+varying vec4 secondaryScreenPos;
+
+void main() {
+  secondaryScreenPos = secondaryViewProjection * world * vec4(position, 1.0);
+  
+  gl_Position = worldViewProjection * vec4(position, 1.0);
+}
+`;
+
+BABYLON.Effect.ShadersStore.customFragmentShader = `
+precision highp float;
+
+uniform sampler2D depthTexture;
+
+varying vec4 secondaryScreenPos;
+
+void main() {
+  vec3 projCoords = secondaryScreenPos.xyz / secondaryScreenPos.w;
+
+  // If the point is outside the screen, discard it
+  if(abs(projCoords.x) > 1.0 || abs(projCoords.y) > 1.0 || projCoords.z < 0.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  // Get the depth value from the depth texture and calculate whether a fragment is visible or should be black
+  float depthValue = texture2D(depthTexture, projCoords.xy * 0.5 + 0.5).r;
+
+  gl_FragColor = vec4(depthValue, depthValue, depthValue, 1.0);
+}
+`;
+
+scene.meshes.forEach((mesh) => {
+  mesh.setMaterialForRenderPass(secondaryCamera.renderPassId, standartMaterial);
+
+  const meshMaterial = visibilityShaderMaterial.clone(
+    "visibilityShaderMaterial_" + mesh.name
+  );
+
+  // should do the same as setMeterialForRenderpass
+  // depthRenderer.getDepthMap().setMaterialForRendering(mesh, standartMaterial);
+
+  meshMaterial.setMatrix("world", mesh.getWorldMatrix());
+  meshMaterial.setTexture("depthTexture", depthRenderer.getDepthMap());
+
+  mesh.setMaterialForRenderPass(camera.renderPassId, meshMaterial);
+});
+
+scene.onBeforeRenderObservable.add(() => {});
+
+const cameraSpeed = 0.25;
+
+scene.registerBeforeRender(() => {
+  secondaryCamera.position.x =
+    Math.cos((performance.now() / 1000) * cameraSpeed) * 10;
+  secondaryCamera.position.z =
+    Math.sin((performance.now() / 1000) * cameraSpeed) * 10;
+
+  secondaryCamera.setTarget(
+    new BABYLON.Vector3(
+      Math.cos((performance.now() / 1000) * cameraSpeed + 1) * 10,
+      0,
+      Math.sin((performance.now() / 1000) * cameraSpeed + 1) * 10
+    )
+  );
+
+  scene.meshes.forEach((mesh) => {
+    const meshMaterial = mesh.getMaterialForRenderPass(
+      camera.renderPassId
+    ) as BABYLON.ShaderMaterial;
+
+    if (meshMaterial.name.startsWith("visibilityShaderMaterial_")) {
+      // meshMaterial.setTexture("depthTexture", depthRenderer.getDepthMap());
+      meshMaterial.setMatrix("world", mesh.getWorldMatrix());
+      meshMaterial.setMatrix(
+        "secondaryViewProjection",
+        secondaryCamera
+          .getViewMatrix()
+          .multiply(secondaryCamera.getProjectionMatrix())
+      );
+    }
+  });
+});
 
 engine.runRenderLoop(() => {
   scene.render();
@@ -323,4 +315,14 @@ engine.runRenderLoop(() => {
 
 window.addEventListener("resize", () => {
   engine.resize();
+});
+
+window.addEventListener("keydown", (ev) => {
+  if (ev.key === "I" || ev.key === "i") {
+    if (scene.debugLayer.isVisible()) {
+      scene.debugLayer.hide();
+    } else {
+      scene.debugLayer.show();
+    }
+  }
 });
