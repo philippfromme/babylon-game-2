@@ -3,7 +3,15 @@ import "@babylonjs/inspector";
 
 import { createCheckerboardTexture } from "./material/createCheckerboardTexture";
 
+import FrustumMaskMaterialPlugin from "./FrustumMaskMaterialPlugin";
+
 import "./main.css";
+
+// BABYLON.RegisterMaterialPlugin("FrustumMask", (material) => {
+//   const plugin = new FrustumMaskMaterialPlugin(material);
+
+//   return plugin;
+// });
 
 const canvas = document.createElement("canvas");
 
@@ -48,13 +56,26 @@ const light = new BABYLON.DirectionalLight(
   scene
 );
 
-// Standard material
-const standartMaterial = new BABYLON.StandardMaterial("material", scene);
+const hemisphericLight = new BABYLON.HemisphericLight(
+  "hemisphericLight",
+  new BABYLON.Vector3(0, 1, 0),
+  scene
+);
+hemisphericLight.intensity = 0.5;
 
-standartMaterial.diffuseTexture = createCheckerboardTexture(scene, {
+// Standard material
+const standardMaterial = new BABYLON.StandardMaterial("material", scene);
+
+standardMaterial.diffuseTexture = createCheckerboardTexture(scene, {
   canvasWidth: 2048,
-  squares: 256,
+  squares: 16,
+  color1: "#0000ff",
+  color2: "#ffffff",
 });
+
+const plugin = new FrustumMaskMaterialPlugin(standardMaterial);
+
+plugin.isEnabled = true;
 
 const ground = BABYLON.MeshBuilder.CreateGround(
   "ground",
@@ -62,18 +83,7 @@ const ground = BABYLON.MeshBuilder.CreateGround(
   scene
 );
 
-ground.material = standartMaterial.clone("groundMaterial");
-
-// const ground2 = BABYLON.MeshBuilder.CreateGround(
-//   "ground2",
-//   { width: 50, height: 50 },
-//   scene
-// );
-
-// ground2.position.y = 1;
-// ground2.position.x = 25;
-// ground2.position.z = 25;
-// ground2.material = standartMaterial.clone("ground2Material");
+ground.material = standardMaterial;
 
 const capsule = BABYLON.MeshBuilder.CreateCapsule(
   "capsule",
@@ -83,12 +93,7 @@ const capsule = BABYLON.MeshBuilder.CreateCapsule(
 
 capsule.position = new BABYLON.Vector3(0, 1, 0);
 
-const capsuleMaterial = standartMaterial.clone("capsuleMaterial");
-
-capsuleMaterial.diffuseTexture = createCheckerboardTexture(scene, {
-  canvasWidth: 256,
-  squares: 16,
-});
+const capsuleMaterial = standardMaterial;
 
 capsule.material = capsuleMaterial;
 
@@ -97,13 +102,6 @@ const positions: BABYLON.Vector3[] = [];
 const boxes: BABYLON.Mesh[] = [];
 
 const maxTries = 100;
-
-const boxMaterial = standartMaterial.clone("boxMaterial");
-
-boxMaterial.diffuseTexture = createCheckerboardTexture(scene, {
-  canvasWidth: 256,
-  squares: 10,
-});
 
 for (let i = 0; i < 50; i++) {
   const width = Math.random() * 2 + 0.5;
@@ -136,7 +134,7 @@ for (let i = 0; i < 50; i++) {
 
   positions.push(position);
 
-  box.material = boxMaterial;
+  box.material = standardMaterial;
 
   box.convertToFlatShadedMesh();
 
@@ -194,100 +192,14 @@ scene.onBeforeRenderObservable.add(() => {
 });
 
 const depthRenderer = scene.enableDepthRenderer(secondaryCamera, true, true);
-const depthMap = depthRenderer.getDepthMap();
+plugin.setDepthTexture(depthRenderer.getDepthMap());
 
-const visibilityShaderMaterial = new BABYLON.ShaderMaterial(
-  "visibilityShader",
-  scene,
-  {
-    vertex: "custom",
-    fragment: "custom",
-  },
-  {
-    attributes: ["position", "uv"],
-    uniforms: [
-      "depthTexture",
-      "secondaryViewProjection",
-      "world",
-      "worldViewProjection",
-    ],
-  }
-);
-
-visibilityShaderMaterial.setTexture("depthTexture", depthMap);
-visibilityShaderMaterial.setMatrix(
-  "secondaryViewProjection",
-  secondaryCamera
-    .getViewMatrix()
-    .multiply(secondaryCamera.getProjectionMatrix())
-);
-
-BABYLON.Effect.ShadersStore.customVertexShader = `
-precision highp float;
-
-attribute vec3 position;
-
-uniform mat4 world;
-uniform mat4 worldViewProjection;
-uniform mat4 secondaryViewProjection;
-
-varying vec4 secondaryScreenPos;
-
-void main() {
-  secondaryScreenPos = secondaryViewProjection * world * vec4(position, 1.0);
-  
-  gl_Position = worldViewProjection * vec4(position, 1.0);
-}
-`;
-
-BABYLON.Effect.ShadersStore.customFragmentShader = `
-precision highp float;
-
-uniform sampler2D depthTexture;
-
-varying vec4 secondaryScreenPos;
-
-void main() {
-  // Convert light-space coordinates to texture coordinates
-  vec3 projCoords = secondaryScreenPos.xyz / secondaryScreenPos.w;
-
-  if(abs(projCoords.x) > 1.0 || abs(projCoords.y) > 1.0 || projCoords.z < 0.0) {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    return;
-  }
-
-  projCoords = projCoords * 0.5 + 0.5;  // Transform from [-1, 1] to [0, 1]
-
-  // Read depth value from texture
-  float closestDepth = texture2D(depthTexture, projCoords.xy).r;
-
-  // Convert depth to correct space
-  float currentDepth = (secondaryScreenPos.z / secondaryScreenPos.w) * 0.5 + 0.5;
-
-  // Apply bias
-  float bias = 0.001; // Increase if needed
-  float visibility = (currentDepth - bias > closestDepth) ? 0.0 : 1.0;
-
-  gl_FragColor = vec4(visibility * vec3(1.0, 0.0, 1.0), 1.0);
-}
-`;
+const depthMaterial = new BABYLON.StandardMaterial("depthMaterial", scene);
 
 scene.meshes.forEach((mesh) => {
-  mesh.setMaterialForRenderPass(secondaryCamera.renderPassId, standartMaterial);
-
-  const meshMaterial = visibilityShaderMaterial.clone(
-    "visibilityShaderMaterial_" + mesh.name
-  );
-
-  // should do the same as setMeterialForRenderpass
-  // depthRenderer.getDepthMap().setMaterialForRendering(mesh, standartMaterial);
-
-  meshMaterial.setTexture("depthTexture", depthRenderer.getDepthMap());
-
-  mesh.setMaterialForRenderPass(camera.renderPassId, meshMaterial);
+  mesh.setMaterialForRenderPass(secondaryCamera.renderPassId, depthMaterial);
+  mesh.setMaterialForRenderPass(camera.renderPassId, standardMaterial);
 });
-
-scene.onBeforeRenderObservable.add(() => {});
 
 const cameraSpeed = 0.1;
 
@@ -305,21 +217,11 @@ scene.registerBeforeRender(() => {
     )
   );
 
-  scene.meshes.forEach((mesh) => {
-    const meshMaterial = mesh.getMaterialForRenderPass(
-      camera.renderPassId
-    ) as BABYLON.ShaderMaterial;
-
-    if (meshMaterial.name.startsWith("visibilityShaderMaterial_")) {
-      // meshMaterial.setTexture("depthTexture", depthRenderer.getDepthMap());
-      meshMaterial.setMatrix(
-        "secondaryViewProjection",
-        secondaryCamera
-          .getViewMatrix()
-          .multiply(secondaryCamera.getProjectionMatrix())
-      );
-    }
-  });
+  plugin.setSecondaryViewProjection(
+    secondaryCamera
+      .getViewMatrix()
+      .multiply(secondaryCamera.getProjectionMatrix())
+  );
 });
 
 engine.runRenderLoop(() => {
