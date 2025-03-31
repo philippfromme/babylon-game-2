@@ -73,6 +73,20 @@ standardMaterial.diffuseTexture = createCheckerboardTexture(scene, {
   color2: "#ffffff",
 });
 
+const standardMaterialWithoutPlugin = standardMaterial.clone(
+  "materialWithoutPlugin"
+);
+
+standardMaterialWithoutPlugin.diffuseTexture = createCheckerboardTexture(
+  scene,
+  {
+    canvasWidth: 2048,
+    squares: 16,
+    color1: "#ff0000",
+    color2: "#ffffff",
+  }
+);
+
 const plugin = new FrustumMaskMaterialPlugin(standardMaterial);
 
 plugin.isEnabled = true;
@@ -101,12 +115,19 @@ const positions: BABYLON.Vector3[] = [];
 
 const boxes: BABYLON.Mesh[] = [];
 
+const numBoxes = 20;
 const maxTries = 100;
+const minBoxWidth = 5;
+const maxBoxWidth = 10;
+const minBoxHeight = 1;
+const maxBoxHeight = 50;
+const minBoxDepth = 5;
+const maxBoxDepth = 10;
 
-for (let i = 0; i < 50; i++) {
-  const width = Math.random() * 2 + 0.5;
-  const height = Math.random() * 10 + 1;
-  const depth = Math.random() * 2 + 0.5;
+for (let i = 0; i < numBoxes; i++) {
+  const width = Math.random() * (maxBoxWidth - minBoxWidth) + minBoxWidth;
+  const height = Math.random() * (maxBoxHeight - minBoxHeight) + minBoxHeight;
+  const depth = Math.random() * (maxBoxDepth - minBoxDepth) + minBoxDepth;
 
   const box = BABYLON.MeshBuilder.CreateBox(
     "box",
@@ -191,13 +212,43 @@ scene.onBeforeRenderObservable.add(() => {
   capsule.moveWithCollisions(moveDirection.scale(speed));
 });
 
+const renderTarget = new BABYLON.RenderTargetTexture(
+  "SecondaryCameraRTT",
+  {
+    width: engine.getRenderWidth(),
+    height: engine.getRenderHeight(),
+  },
+  scene
+);
+
+renderTarget.activeCamera = secondaryCamera;
+
+renderTarget.renderList!.push(...scene.meshes);
+
+renderTarget.createDepthStencilTexture();
+
+scene.customRenderTargets.push(renderTarget);
+
+// let depthTexture;
+// if (renderTarget.depthStencilTexture) {
+//   depthTexture = new BABYLON.Texture(null, scene);
+//   depthTexture._texture = renderTarget.depthStencilTexture; // Assign the internal texture
+// }
+
+plugin.setColorTexture(renderTarget);
+
+// if (depthTexture) {
+//   plugin.setDepthTexture(depthTexture);
+// }
+
 const depthRenderer = scene.enableDepthRenderer(secondaryCamera, true, true);
 plugin.setDepthTexture(depthRenderer.getDepthMap());
 
-const depthMaterial = new BABYLON.StandardMaterial("depthMaterial", scene);
-
 scene.meshes.forEach((mesh) => {
-  mesh.setMaterialForRenderPass(secondaryCamera.renderPassId, depthMaterial);
+  mesh.setMaterialForRenderPass(
+    renderTarget.renderPassId,
+    standardMaterialWithoutPlugin
+  );
   mesh.setMaterialForRenderPass(camera.renderPassId, standardMaterial);
 });
 

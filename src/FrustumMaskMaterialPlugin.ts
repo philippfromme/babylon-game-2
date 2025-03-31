@@ -4,6 +4,7 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
   _isEnabled: boolean = true;
 
   _secondaryViewProjection: BABYLON.Matrix = BABYLON.Matrix.Identity();
+  _colorTexture: BABYLON.Nullable<BABYLON.Texture> = null;
   _depthTexture: BABYLON.Nullable<BABYLON.Texture> = null;
 
   constructor(material: BABYLON.Material) {
@@ -29,6 +30,10 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
 
   setSecondaryViewProjection(secondaryViewProjection: BABYLON.Matrix) {
     this._secondaryViewProjection = secondaryViewProjection;
+  }
+
+  setColorTexture(colorTexture: BABYLON.Texture) {
+    this._colorTexture = colorTexture;
   }
 
   setDepthTexture(depthTexture: BABYLON.Texture) {
@@ -68,7 +73,7 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
   }
 
   getSamplers(samplers: string[]) {
-    samplers.push("depthTexture");
+    samplers.push("colorTexture", "depthTexture");
   }
 
   bindForSubMesh(
@@ -82,6 +87,11 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
         "secondaryViewProjection",
         this._secondaryViewProjection
       );
+      if (this._colorTexture) {
+        uniformBuffer.setTexture("colorTexture", this._colorTexture);
+      } else {
+        console.warn("Color texture is not set for FrustumMaskMaterialPlugin.");
+      }
       if (this._depthTexture) {
         uniformBuffer.setTexture("depthTexture", this._depthTexture);
       } else {
@@ -127,6 +137,7 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
       return {
         CUSTOM_FRAGMENT_DEFINITIONS: `
           #ifdef FrustumMask
+            uniform sampler2D colorTexture;
             uniform sampler2D depthTexture;
 
             varying vec4 secondaryScreenPos;
@@ -153,6 +164,9 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
             // Apply bias
             float bias = 0.0001; // Increase if needed
             float visibility = (currentDepth - bias > closestDepth) ? 0.0 : 1.0;
+
+            // Read color value from texture
+            color = texture2D(colorTexture, projCoords.xy);
 
             color = vec4(visibility * color.rgb, 1.0);
           #endif
