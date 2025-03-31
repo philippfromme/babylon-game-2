@@ -145,30 +145,39 @@ export default class FrustumMaskMaterialPlugin extends BABYLON.MaterialPluginBas
         `,
         CUSTOM_FRAGMENT_BEFORE_FRAGCOLOR: `
           #ifdef FrustumMask
-            // Convert light-space coordinates to texture coordinates
-            vec3 projCoords = secondaryScreenPos.xyz / secondaryScreenPos.w;
+            // Convert from clip space to normalized device coordinates
+            vec3 ndcCoords = secondaryScreenPos.xyz / secondaryScreenPos.w;
 
-            if(abs(projCoords.x) > 1.0 || abs(projCoords.y) > 1.0 || projCoords.z < 0.0) {
-              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-              return;
-            }
+            // Convert from NDC to texture coordinates
+            vec3 textureCoords = ndcCoords * 0.5 + 0.5;  // Transform from [-1, 1] to [0, 1]
 
-            projCoords = projCoords * 0.5 + 0.5;  // Transform from [-1, 1] to [0, 1]
+            // Read color value from texture
+            // color = texture2D(colorTexture, textureCoords.xy);
 
             // Read depth value from texture
-            float closestDepth = texture2D(depthTexture, projCoords.xy).r;
+            float depth = texture2D(depthTexture, textureCoords.xy).r;
+
+            if(abs(ndcCoords.x) > 1.0 || abs(ndcCoords.y) > 1.0 || ndcCoords.z < 0.0) {
+
+              // darken the fragment by 90%
+              gl_FragColor = vec4(color.rgb * 0.05, 1.0);
+
+              return;
+            }
 
             // Convert depth to correct space
             float currentDepth = (secondaryScreenPos.z / secondaryScreenPos.w) * 0.5 + 0.5;
 
             // Apply bias
             float bias = 0.0001; // Increase if needed
-            float visibility = (currentDepth - bias > closestDepth) ? 0.0 : 1.0;
 
-            // Read color value from texture
-            color = texture2D(colorTexture, projCoords.xy);
+            if (currentDepth - bias > depth) {
+            
+              // darken the fragment by 90%
+              gl_FragColor = vec4(color.rgb * 0.05, 1.0);
 
-            color = vec4(visibility * color.rgb, 1.0);
+              return;
+            }
           #endif
         `,
       };

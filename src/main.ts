@@ -117,12 +117,12 @@ const boxes: BABYLON.Mesh[] = [];
 
 const numBoxes = 20;
 const maxTries = 100;
-const minBoxWidth = 5;
-const maxBoxWidth = 10;
-const minBoxHeight = 1;
+const minBoxWidth = 1;
+const maxBoxWidth = 5;
+const minBoxHeight = 5;
 const maxBoxHeight = 50;
-const minBoxDepth = 5;
-const maxBoxDepth = 10;
+const minBoxDepth = 1;
+const maxBoxDepth = 5;
 
 for (let i = 0; i < numBoxes; i++) {
   const width = Math.random() * (maxBoxWidth - minBoxWidth) + minBoxWidth;
@@ -263,7 +263,7 @@ scene.registerBeforeRender(() => {
   secondaryCamera.setTarget(
     new BABYLON.Vector3(
       Math.cos((performance.now() / 1000) * cameraSpeed + 1) * 10,
-      0,
+      Math.sin((performance.now() / 1000) * cameraSpeed + 1) * 10,
       Math.sin((performance.now() / 1000) * cameraSpeed + 1) * 10
     )
   );
